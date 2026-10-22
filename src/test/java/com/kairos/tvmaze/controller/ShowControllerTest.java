@@ -2,6 +2,7 @@ package com.kairos.tvmaze.controller;
 
 import com.kairos.tvmaze.exception.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kairos.tvmaze.dto.response.CommentResponse;
 import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.service.ShowService;
@@ -13,6 +14,7 @@ import org.springframework.context.annotation.Import;
 import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
+import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
 
@@ -118,5 +120,65 @@ class ShowControllerTest {
         mockMvc.perform(get("/api/shows/999"))
                 .andExpect(status().isNotFound());
     }
+    
+    /*
+     * Se agregan los Test para los comentarios
+     */
 
+    @Test
+    @DisplayName("A- GET /api/search/shows con query válido debe retornar HTTP 200 con arreglo de comments")
+    void searchShows_withValidQuery_shouldReturn200WithComments() throws Exception {
+        // Arrange
+        CommentResponse comment = CommentResponse.builder()
+                .comment("Great show!")
+                .rating(5)
+                .build();
+
+        ShowSearchResponse show = ShowSearchResponse.builder()
+                .id(1)
+                .name("Breaking Bad")
+                .channel("AMC")
+                .summary("A chemistry teacher")
+                .genres(List.of("Drama"))
+                .comments(List.of(comment))
+                .build();
+
+        when(showService.searchShows("breaking")).thenReturn(List.of(show));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/search/shows")
+                        .param("q", "breaking"))
+                .andExpect(status().isOk())
+                .andExpect(content().contentType("application/json"))
+                .andExpect(jsonPath("$[0].id").value(1))
+                .andExpect(jsonPath("$[0].name").value("Breaking Bad"))
+                .andExpect(jsonPath("$[0].channel").value("AMC"))
+                // Validaciones clave del Commit 5:
+                .andExpect(jsonPath("$[0].comments").isArray())
+                .andExpect(jsonPath("$[0].comments[0].comment").value("Great show!"))
+                .andExpect(jsonPath("$[0].comments[0].rating").value(5));
+    }
+
+    @Test
+    @DisplayName("A- GET /api/search/shows sin comentarios debe retornar arreglo comments vacío")
+    void searchShows_withoutComments_shouldReturnEmptyCommentsArray() throws Exception {
+        // Arrange
+        ShowSearchResponse show = ShowSearchResponse.builder()
+                .id(2)
+                .name("Test Show")
+                .channel("HBO")
+                .summary("Test summary")
+                .genres(List.of("Drama"))
+                .comments(Collections.emptyList())
+                .build();
+
+        when(showService.searchShows("test")).thenReturn(List.of(show));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/search/shows")
+                        .param("q", "test"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$[0].comments").isArray())
+                .andExpect(jsonPath("$[0].comments").isEmpty());
+    }
 }

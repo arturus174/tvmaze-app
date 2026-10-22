@@ -1,11 +1,14 @@
 package com.kairos.tvmaze.service;
 
 import com.kairos.tvmaze.client.TvMazeClient;
+import com.kairos.tvmaze.dto.response.CommentResponse;
 import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
 import com.kairos.tvmaze.model.domain.TvMazeShow;
+import com.kairos.tvmaze.model.entity.Comment;
 import com.kairos.tvmaze.model.entity.ShowCache;
+import com.kairos.tvmaze.repository.CommentRepository;
 import com.kairos.tvmaze.repository.ShowCacheRepository;
 import com.kairos.tvmaze.service.mapper.ShowMapper;
 import lombok.extern.slf4j.Slf4j;
@@ -30,14 +33,17 @@ public class ShowService {
     private final TvMazeClient tvMazeClient;
     private final ShowMapper showMapper;
     private final ShowCacheRepository showCacheRepository;
+    private final CommentRepository commentRepository;
 
 
     public ShowService(TvMazeClient tvMazeClient,
                        ShowMapper showMapper,
-                       ShowCacheRepository showCacheRepository) {
+                       ShowCacheRepository showCacheRepository,
+                       CommentRepository commentRepository) {
         this.tvMazeClient = tvMazeClient;
         this.showMapper = showMapper;
         this.showCacheRepository = showCacheRepository;
+        this.commentRepository = commentRepository;
     }
 
     /**
@@ -60,7 +66,16 @@ public class ShowService {
 
         return results.stream()
                 .filter(result -> result.getShow() != null)
-                .map(result -> showMapper.toSearchResponse(result.getShow()))
+                .map(result -> {
+                    TvMazeShow show = result.getShow();
+                    ShowSearchResponse response = showMapper.toSearchResponse(show);
+
+                    // Consultar comentarios para este show específico
+                    List<Comment> comments = commentRepository.findByShowIdOrderByCreatedAtDesc(show.getId());
+                    response.setComments(mapCommentsToResponse(comments));
+
+                    return response;
+                })
                 .collect(Collectors.toList());
     }
 
@@ -98,6 +113,23 @@ public class ShowService {
 
         // 4. Retornar la respuesta mapeada desde el objeto de la API
         return Optional.of(showMapper.toDetailResponse(show));
+        
+    }
+
+    /**
+     * Método auxiliar para convertir entidades Comment a DTOs CommentResponse.
+     */
+    private List<CommentResponse> mapCommentsToResponse(List<Comment> comments) {
+        if (comments == null || comments.isEmpty()) {
+            return Collections.emptyList();
+        }
+
+        return comments.stream()
+                .map(comment -> CommentResponse.builder()
+                        .comment(comment.getComment())
+                        .rating(comment.getRating())
+                        .build())
+                .collect(Collectors.toList());
     }
 
 

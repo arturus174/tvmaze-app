@@ -36,4 +36,8 @@ public class ShowSearchResponse {
     /** Lista de géneros asociados al show. */
     private List<String> genres;
 
+    /**
+     * Arreglo de comentarios guardados para este show.
+     */
+    private List<CommentResponse> comments;
 }
