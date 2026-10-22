@@ -3,12 +3,12 @@ package com.kairos.tvmaze.service;
 import com.kairos.tvmaze.client.TvMazeClient;
 import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
+import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
+import com.kairos.tvmaze.model.domain.TvMazeShow;
 import com.kairos.tvmaze.model.entity.Comment;
 import com.kairos.tvmaze.model.entity.ShowCache;
 import com.kairos.tvmaze.repository.CommentRepository;
 import com.kairos.tvmaze.repository.ShowCacheRepository;
-import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
-import com.kairos.tvmaze.model.domain.TvMazeShow;
 import com.kairos.tvmaze.service.mapper.ShowMapper;
 import org.junit.jupiter.api.BeforeEach;
 import org.junit.jupiter.api.DisplayName;
@@ -19,39 +19,43 @@ import org.mockito.Mock;
 import org.mockito.junit.jupiter.MockitoExtension;
 import reactor.core.publisher.Mono;
 
+import java.time.LocalDateTime;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
-import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.ArgumentMatchers.any;
 import static org.mockito.ArgumentMatchers.anyInt;
+import static org.mockito.ArgumentMatchers.anyString;
 import static org.mockito.Mockito.*;
 
 /**
  * Clase de pruebas unitarias para ShowService.
- *
- * Utiliza simular las dependencias externas:
- * - TvMazeClient: evita llamadas reales a la API de TV Maze.
  */
 @ExtendWith(MockitoExtension.class)
 class ShowServiceTest {
 
+    /**
+     * Mock del cliente HTTP de TV Maze.
+     */
     @Mock
     private TvMazeClient tvMazeClient;
 
-    // se agrega para simular prueba del cache.
+    /**
+     * Simula operaciones de MongoDB para el caché.
+     */
     @Mock
     private ShowCacheRepository showCacheRepository;
 
-    // Se agrega para prueba de los comentarios.
+    /**
+     * Simula operaciones de MongoDB para los comentarios.
+     */
     @Mock
     private CommentRepository commentRepository;
 
     /**
-     * sin dependencias externas.
-     * Se inyecta manualmente en el método @BeforeEach.
+     * Instancia real del mapper 
      */
     private ShowMapper showMapper;
 
@@ -63,18 +67,9 @@ class ShowServiceTest {
     void setUp() {
         showMapper = new ShowMapper();
         // Re-inicializar el servicio con el mapper real
-        showService = new ShowService(tvMazeClient, showMapper, showCacheRepository, commentRepository  );
+        showService = new ShowService(tvMazeClient, showMapper, showCacheRepository, commentRepository);
     }
 
-    /**
-     * Prueba el caso de búsqueda exitosa con resultados.
-     *
-     * Escenario:
-     * El cliente HTTP devuelve 2 shows.
-     *
-     * Validaciones:
-     * - El tamaño de la lista de resultados es correcto.
-     */
     @Test
     @DisplayName("Buscar shows con query válido debe retornar resultados con comentarios")
     void searchShows_withValidQuery_shouldReturnResultsWithComments() {
@@ -101,9 +96,25 @@ class ShowServiceTest {
                 TvMazeSearchResult.builder().score(0.8).show(show2).build()
         );
 
+        // Crear comentarios de prueba
+        Comment comment1 = Comment.builder()
+                .showId(1)
+                .comment("Amazing series!")
+                .rating(5)
+                .createdAt(LocalDateTime.now())
+                .build();
+
+        Comment comment2 = Comment.builder()
+                .showId(2)
+                .comment("Good but slow start")
+                .rating(4)
+                .createdAt(LocalDateTime.now())
+                .build();
 
         // Configurar los mocks
         when(tvMazeClient.searchShows(query)).thenReturn(Mono.just(searchResults));
+        when(commentRepository.findByShowIdOrderByCreatedAtDesc(1)).thenReturn(List.of(comment1));
+        when(commentRepository.findByShowIdOrderByCreatedAtDesc(2)).thenReturn(List.of(comment2));
 
         // Act: Ejecutar el método bajo prueba
         List<ShowSearchResponse> results = showService.searchShows(query);
@@ -114,26 +125,20 @@ class ShowServiceTest {
 
         // Validar primer show
         assertEquals("Breaking Bad", results.get(0).getName());
-
+        assertEquals(1, results.get(0).getComments().size());
+        assertEquals("Amazing series!", results.get(0).getComments().get(0).getComment());
 
         // Validar segundo show
         assertEquals("Better Call Saul", results.get(1).getName());
-
+        assertEquals(1, results.get(1).getComments().size());
+        assertEquals("Good but slow start", results.get(1).getComments().get(0).getComment());
 
         // Validar interacciones con los mocks
         verify(tvMazeClient, times(1)).searchShows(query);
-
+        verify(commentRepository, times(1)).findByShowIdOrderByCreatedAtDesc(1);
+        verify(commentRepository, times(1)).findByShowIdOrderByCreatedAtDesc(2);
     }
 
-    /**
-     * Prueba el caso de búsqueda sin resultados.
-     *
-     * Escenario:
-     * El cliente HTTP devuelve una lista vacía.
-     *
-     * Validaciones:
-     * - La lista de resultados está vacía.
-     */
     @Test
     @DisplayName("Buscar shows sin resultados debe retornar lista vacía")
     void searchShows_withNoResults_shouldReturnEmptyList() {
@@ -148,60 +153,40 @@ class ShowServiceTest {
         assertNotNull(results);
         assertTrue(results.isEmpty());
 
+        // Validar que NO se consultaron comentarios (optimización)
+        verify(commentRepository, never()).findByShowIdOrderByCreatedAtDesc(anyInt());
     }
 
     @Test
-    @DisplayName("B- Endpoint show: Debe retornar el show completo cuando la API lo encuentra")
-    void getShowById_whenFound_shouldReturnDetailResponse() {
+    @DisplayName("Obtener show existente en caché debe retornar desde MongoDB sin llamar API")
+    void getShowById_whenExistsInCache_shouldReturnFromCacheWithoutCallingApi() {
         // Arrange
         Integer showId = 1;
-        TvMazeShow apiShow = TvMazeShow.builder()
-                .id(showId)
-                .name("Breaking Bad")
-                .language("English")
-                .genres(List.of("Drama"))
-                .build();
 
-        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.just(apiShow));
-
-        // Act
-        Optional<ShowDetailResponse> result = showService.getShowById(showId);
-
-        // Assert
-        assertTrue(result.isPresent());
-        assertEquals("Breaking Bad", result.get().getName());
-        assertEquals("English", result.get().getLanguage());
-        verify(tvMazeClient, times(1)).getShowById(showId);
-    }
-
-    @Test
-    @DisplayName("B- Endpoint show: Debe retornar Optional.empty() cuando la API no encuentra el show")
-    void getShowById_whenNotFound_shouldReturnEmpty() {
-        // Arrange
-        Integer showId = 999;
-        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.empty());
-
-        // Act
-        Optional<ShowDetailResponse> result = showService.getShowById(showId);
-
-        // Assert
-        assertTrue(result.isEmpty());
-        verify(tvMazeClient, times(1)).getShowById(showId);
-    }
-
-    @Test
-    @DisplayName("B- Endpoint show (Caché): Debe retornar desde MongoDB sin llamar a la API si ya existe")
-    void getShowById_whenExistsInCache_shouldReturnFromCacheWithoutApiCall() {
-        // Arrange
-        Integer showId = 1;
         ShowCache cachedShow = ShowCache.builder()
                 .showId(showId)
                 .name("Breaking Bad")
+                .summary("A chemistry teacher")
                 .language("English")
+                .genres(List.of("Drama"))
+                .status("Ended")
+                .runtime(60)
+                .premiered("2008-01-20")
+                .imageUrl("https://example.com/image.jpg")
+                .channelName("AMC")
+                .channelCountry("United States")
                 .cachedAt(LocalDateTime.now().minusDays(1))
                 .build();
 
+        Comment comment = Comment.builder()
+                .showId(showId)
+                .comment("Masterpiece")
+                .rating(5)
+                .createdAt(LocalDateTime.now())
+                .build();
+
         when(showCacheRepository.findByShowId(showId)).thenReturn(Optional.of(cachedShow));
+        when(commentRepository.findByShowIdOrderByCreatedAtDesc(showId)).thenReturn(List.of(comment));
 
         // Act
         Optional<ShowDetailResponse> result = showService.getShowById(showId);
@@ -209,26 +194,37 @@ class ShowServiceTest {
         // Assert
         assertTrue(result.isPresent());
         assertEquals("Breaking Bad", result.get().getName());
-        
-        // Validaciones CRÍTICAS:
+        assertEquals(1, result.get().getComments().size());
+        assertEquals("Masterpiece", result.get().getComments().get(0).getComment());
+
+        // Validar que NO se llamó a la API externa
+        verify(tvMazeClient, never()).getShowById(anyInt());
         verify(showCacheRepository, times(1)).findByShowId(showId);
-        verify(tvMazeClient, never()).getShowById(anyInt()); // ¡No debe llamar a la API!
-        verify(showCacheRepository, never()).save(any());    // ¡No debe guardar de nuevo!
+        verify(showCacheRepository, never()).save(any());
     }
 
+
     @Test
-    @DisplayName("B- Endpoint show (Caché): Debe llamar a la API y guardar en Mongo si no existe en caché")
-    void getShowById_whenNotInCache_shouldCallApiAndSaveToMongo() {
+    @DisplayName("Obtener show no existente en caché debe llamar API y guardar en MongoDB")
+    void getShowById_whenNotInCache_shouldCallApiAndSaveToCache() {
         // Arrange
-        Integer showId = 99;
-        TvMazeShow apiShow = TvMazeShow.builder()
+        Integer showId = 1;
+
+        TvMazeShow showFromApi = TvMazeShow.builder()
                 .id(showId)
-                .name("New Show")
-                .language("Spanish")
+                .name("Breaking Bad")
+                .url("https://www.tvmaze.com/shows/1/breaking-bad")
+                .summary("A chemistry teacher")
+                .language("English")
+                .genres(List.of("Drama"))
+                .status("Ended")
+                .runtime(60)
+                .premiered("2008-01-20")
                 .build();
 
         when(showCacheRepository.findByShowId(showId)).thenReturn(Optional.empty());
-        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.just(apiShow));
+        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.just(showFromApi));
+        when(commentRepository.findByShowIdOrderByCreatedAtDesc(showId)).thenReturn(Collections.emptyList());
         when(showCacheRepository.save(any(ShowCache.class))).thenAnswer(invocation -> invocation.getArgument(0));
 
         // Act
@@ -236,98 +232,31 @@ class ShowServiceTest {
 
         // Assert
         assertTrue(result.isPresent());
-        assertEquals("New Show", result.get().getName());
-        
-        // Validaciones CRÍTICAS:
-        verify(showCacheRepository, times(1)).findByShowId(showId);
-        verify(tvMazeClient, times(1)).getShowById(showId); // ¡Sí debe llamar a la API!
-        verify(showCacheRepository, times(1)).save(any(ShowCache.class)); // ¡Debe guardar en Mongo!
-    }
+        assertEquals("Breaking Bad", result.get().getName());
+        assertTrue(result.get().getComments().isEmpty());
 
-    /*
-     * Prueba de agregar comentarios a la BD
-     */
-    @Test
-    @DisplayName("A- searchShows: Debe enriquecer cada show con sus comentarios de MongoDB")
-    void searchShows_withResults_shouldEnrichWithComments() {
-        // Arrange
-        String query = "breaking";
-
-        TvMazeShow show1 = TvMazeShow.builder()
-                .id(1)
-                .name("Breaking Bad")
-                .summary("A chemistry teacher")
-                .genres(List.of("Drama"))
-                .build();
-
-        List<TvMazeSearchResult> searchResults = List.of(
-                TvMazeSearchResult.builder().score(0.9).show(show1).build()
-        );
-
-        Comment comment1 = Comment.builder()
-                .showId(1)
-                .comment("Amazing series!")
-                .rating(5)
-                .createdAt(LocalDateTime.now())
-                .build();
-
-        when(tvMazeClient.searchShows(query)).thenReturn(Mono.just(searchResults));
-        when(commentRepository.findByShowIdOrderByCreatedAtDesc(1)).thenReturn(List.of(comment1));
-
-        // Act
-        List<ShowSearchResponse> results = showService.searchShows(query);
-
-        // Assert
-        assertNotNull(results);
-        assertEquals(1, results.size());
-        assertEquals("Breaking Bad", results.get(0).getName());
-        
-        // Validación clave: los comentarios fueron agregados
-        assertEquals(1, results.get(0).getComments().size());
-        assertEquals("Amazing series!", results.get(0).getComments().get(0).getComment());
-        assertEquals(5, results.get(0).getComments().get(0).getRating());
-
-        verify(tvMazeClient, times(1)).searchShows(query);
-        verify(commentRepository, times(1)).findByShowIdOrderByCreatedAtDesc(1);
+        // Validar que se llamó a la API y se guardó en caché
+        verify(tvMazeClient, times(1)).getShowById(showId);
+        verify(showCacheRepository, times(1)).save(any(ShowCache.class));
     }
 
     @Test
-    @DisplayName("A- searchShows: Si un show no tiene comentarios, debe retornar arreglo vacío de comments")
-    void searchShows_withShowWithoutComments_shouldReturnEmptyCommentsList() {
+    @DisplayName("Obtener show inexistente en TV Maze debe retornar Optional.empty()")
+    void getShowById_whenNotFoundInApi_shouldReturnEmpty() {
         // Arrange
-        String query = "test";
-        TvMazeShow show = TvMazeShow.builder().id(2).name("Test Show").build();
-        List<TvMazeSearchResult> searchResults = List.of(
-                TvMazeSearchResult.builder().score(0.8).show(show).build()
-        );
+        Integer showId = 999999;
 
-        when(tvMazeClient.searchShows(query)).thenReturn(Mono.just(searchResults));
-        when(commentRepository.findByShowIdOrderByCreatedAtDesc(2)).thenReturn(Collections.emptyList());
+        when(showCacheRepository.findByShowId(showId)).thenReturn(Optional.empty());
+        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.empty());
 
         // Act
-        List<ShowSearchResponse> results = showService.searchShows(query);
+        Optional<ShowDetailResponse> result = showService.getShowById(showId);
 
         // Assert
-        assertNotNull(results);
-        assertEquals(1, results.size());
-        assertNotNull(results.get(0).getComments());
-        assertTrue(results.get(0).getComments().isEmpty());
+        assertTrue(result.isEmpty());
+
+        // Validar que NO se guardó en caché
+        verify(showCacheRepository, never()).save(any());
     }
-
-    @Test
-    @DisplayName("A- searchShows: Sin resultados de API debe retornar lista vacía sin consultar comentarios")
-    void searchShows_withNoApiResults_shouldReturnEmptyList() {
-        // Arrange
-        when(tvMazeClient.searchShows("xyz")).thenReturn(Mono.just(Collections.emptyList()));
-
-        // Act
-        List<ShowSearchResponse> results = showService.searchShows("xyz");
-
-        // Assert
-        assertNotNull(results);
-        assertTrue(results.isEmpty());
-        verify(commentRepository, never()).findByShowIdOrderByCreatedAtDesc(anyInt());
-    }
-
 }
 

@@ -54,4 +54,10 @@ public class ShowDetailResponse {
     /** País del canal. */
     private String channelCountry;
 
+    /**
+     * Arreglo de comentarios guardados para este show en MongoDB.
+     * Si no hay comentarios, se asigna una lista vacía.
+     */
+    private List<CommentResponse> comments;
+
 }

@@ -80,39 +80,52 @@ public class ShowService {
     }
 
     /**
-     * Punto B (Básico y cache): Obtiene el show por ID consumiendo la API externa.
+     * Punto B (Básico y cache y comentarios): Obtiene el show por ID consumiendo la API externa.
      * Si existe, lo retorna. Si no, consume la API, guarda en Mongo y luego retorna.
      * 
      * @param showId ID del show en TV Maze.
      * @return Optional con el ShowDetailResponse si existe, vacío si no.
      */
     public Optional<ShowDetailResponse> getShowById(Integer showId) {
-        log.info("Solicitando detalle del show con ID: {}", showId);
+        log.info("Consultando detalle del show con ID: {}", showId);
 
         // 1. Validar si ya existe en el caché de MongoDB
         Optional<ShowCache> cachedShow = showCacheRepository.findByShowId(showId);
-        
+
+        ShowDetailResponse response;
+
         if (cachedShow.isPresent()) {
-            log.info("Show ID {} encontrado en caché de MongoDB. Evitando llamada a API externa.", showId);
-            return Optional.of(showMapper.fromCacheToDetailResponse(cachedShow.get()));
+            // Paso 2a: El show está en caché, usarlo directamente
+            log.info("Show ID {} encontrado en caché. Evitando llamada a API externa.", showId);
+            response = showMapper.fromCacheToDetailResponse(cachedShow.get());
+        } else {
+            // 2. Si no existe, consumir la API externa
+            log.info("Show ID {} no encontrado en caché. Consultando API externa...", showId);
+
+            TvMazeShow show = tvMazeClient.getShowById(showId).block();
+
+            if (show == null) {
+                log.warn("Show ID {} no encontrado en TV Maze", showId);
+                return Optional.empty();
+            }
+            
+            // 3. Guardar el resultado en MongoDB antes de retornar
+            log.info("Guardando show ID {} en caché de MongoDB", showId);
+            ShowCache cacheEntity = showMapper.toCacheEntity(show);
+            showCacheRepository.save(cacheEntity);
+
+            // 4. Convertir a DTO la respuesta mapeada desde el objeto de la API
+            response = showMapper.toDetailResponse(show);
         }
 
-        // 2. Si no existe, consumir la API externa
-        log.info("Show ID {} no está en caché. Consumiendo API de TV Maze...", showId);
-        TvMazeShow show = tvMazeClient.getShowById(showId).block();
+        // Paso 5: Enriquecer con comentarios (siempre, venga de caché o de API)
+        List<Comment> comments = commentRepository.findByShowIdOrderByCreatedAtDesc(showId);
+        response.setComments(mapCommentsToResponse(comments));
 
-        if (show == null) {
-            log.warn("Show ID {} no encontrado en la API de TV Maze.", showId);
-            return Optional.empty();
-        }
+        log.info("Detalle del show ID {} obtenido correctamente con {} comentarios",
+                showId, comments.size());
 
-        // 3. Guardar el resultado en MongoDB antes de retornar
-        log.info("Guardando show ID {} en caché de MongoDB.", showId);
-        ShowCache cacheEntity = showMapper.toCacheEntity(show);
-        showCacheRepository.save(cacheEntity);
-
-        // 4. Retornar la respuesta mapeada desde el objeto de la API
-        return Optional.of(showMapper.toDetailResponse(show));
+        return Optional.of(response);
         
     }
 
@@ -131,8 +144,6 @@ public class ShowService {
                         .build())
                 .collect(Collectors.toList());
     }
-
-
     
 }
 

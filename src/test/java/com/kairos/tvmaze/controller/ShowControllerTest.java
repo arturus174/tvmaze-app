@@ -6,6 +6,7 @@ import com.kairos.tvmaze.dto.response.CommentResponse;
 import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.service.ShowService;
+import com.kairos.tvmaze.dto.response.CommentResponse;
 import org.junit.jupiter.api.DisplayName;
 import org.junit.jupiter.api.Test;
 import org.springframework.beans.factory.annotation.Autowired;
@@ -180,5 +181,74 @@ class ShowControllerTest {
                 .andExpect(status().isOk())
                 .andExpect(jsonPath("$[0].comments").isArray())
                 .andExpect(jsonPath("$[0].comments").isEmpty());
+    }
+
+    //Test comentarios B
+        @Test
+    @DisplayName("B- GET /api/shows/{id} debe retornar 200 con el arreglo comments")
+    void getShowById_withComments_shouldReturn200WithCommentsArray() throws Exception {
+        // Arrange: detalle enriquecido tal como lo entrega el servicio.
+        ShowDetailResponse show = ShowDetailResponse.builder()
+                .id(1)
+                .name("Breaking Bad")
+                .language("English")
+                .channelName("AMC")
+                .comments(List.of(
+                        CommentResponse.builder().comment("Increíble serie").rating(5).build(),
+                        CommentResponse.builder().comment("Buen final").rating(4).build()
+                ))
+                .build();
+
+        when(showService.getShowById(1)).thenReturn(Optional.of(show));
+
+        // Act & Assert: valida la estructura JSON exacta requerida por el PDF.
+        mockMvc.perform(get("/api/shows/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.name").value("Breaking Bad"))
+                .andExpect(jsonPath("$.comments").isArray())
+                .andExpect(jsonPath("$.comments.length()").value(2))
+                .andExpect(jsonPath("$.comments[0].comment").value("Increíble serie"))
+                .andExpect(jsonPath("$.comments[0].rating").value(5))
+                .andExpect(jsonPath("$.comments[1].comment").value("Buen final"))
+                .andExpect(jsonPath("$.comments[1].rating").value(4));
+    }
+
+    @Test
+    @DisplayName("B- GET /api/shows/{id} sin comentarios debe retornar comments como arreglo vacío")
+    void getShowById_withoutComments_shouldReturnEmptyCommentsArray() throws Exception {
+        // Arrange
+        ShowDetailResponse show = ShowDetailResponse.builder()
+                .id(2)
+                .name("Test Show")
+                .comments(Collections.emptyList())
+                .build();
+
+        when(showService.getShowById(2)).thenReturn(Optional.of(show));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/shows/2"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.comments").isArray())
+                .andExpect(jsonPath("$.comments").isEmpty());
+    }
+
+    @Test
+    @DisplayName("B- GET /api/shows/{id} inexistente debe retornar 404")
+    void getShowById_whenNotFound_shouldReturn404() throws Exception {
+        // Arrange
+        when(showService.getShowById(999)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        mockMvc.perform(get("/api/shows/999"))
+                .andExpect(status().isNotFound());
+    }
+
+    @Test
+    @DisplayName("B- GET /api/shows/{id} con ID no numérico debe retornar 400")
+    void getShowById_withInvalidIdType_shouldReturn400() throws Exception {
+        // Act & Assert: conversión de tipo fallida, no debe llegar al servicio.
+        mockMvc.perform(get("/api/shows/abc"))
+                .andExpect(status().isBadRequest());
     }
 }
