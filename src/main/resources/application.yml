@@ -1,0 +1,8 @@
+spring:
+  application:
+    name: tvmaze-api
+
+# Configuración para la API externa de TV Maze
+tvmaze:
+  api:
+    base-url: https://api.tvmaze.com
