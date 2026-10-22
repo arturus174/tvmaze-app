@@ -2,6 +2,7 @@ package com.kairos.tvmaze.controller;
 
 import com.kairos.tvmaze.exception.GlobalExceptionHandler;
 import com.fasterxml.jackson.databind.ObjectMapper;
+import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.service.ShowService;
 import org.junit.jupiter.api.DisplayName;
@@ -13,7 +14,7 @@ import org.springframework.boot.test.mock.mockito.MockBean;
 import org.springframework.test.web.servlet.MockMvc;
 
 import java.util.List;
-
+import java.util.Optional;
 
 import static org.mockito.Mockito.when;
 import static org.springframework.test.web.servlet.request.MockMvcRequestBuilders.get;
@@ -87,5 +88,35 @@ class ShowControllerTest {
                 .andExpect(status().isBadRequest());
     }
 
+        @Test
+    @DisplayName("B- GET /api/shows/{id} con ID existente debe retornar HTTP 200")
+    void getShowById_withExistingShow_shouldReturn200() throws Exception {
+        // Arrange
+        ShowDetailResponse show = ShowDetailResponse.builder()
+                .id(1)
+                .name("Breaking Bad")
+                .language("English")
+                .build();
+
+        when(showService.getShowById(1)).thenReturn(Optional.of(show));
+
+        // Act & Assert
+        mockMvc.perform(get("/api/shows/1"))
+                .andExpect(status().isOk())
+                .andExpect(jsonPath("$.id").value(1))
+                .andExpect(jsonPath("$.name").value("Breaking Bad"))
+                .andExpect(jsonPath("$.language").value("English"));
+    }
+
+    @Test
+    @DisplayName("B- GET /api/shows/{id} con ID inexistente debe retornar HTTP 404")
+    void getShowById_withNonExistentShow_shouldReturn404() throws Exception {
+        // Arrange
+        when(showService.getShowById(999)).thenReturn(Optional.empty());
+
+        // Act & Assert
+        mockMvc.perform(get("/api/shows/999"))
+                .andExpect(status().isNotFound());
+    }
 
 }

@@ -1,13 +1,16 @@
 package com.kairos.tvmaze.service;
 
 import com.kairos.tvmaze.client.TvMazeClient;
+import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
+import com.kairos.tvmaze.model.domain.TvMazeShow;
 import com.kairos.tvmaze.service.mapper.ShowMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 import java.util.stream.Collectors;
 
 /**
@@ -15,6 +18,7 @@ import java.util.stream.Collectors;
  *
  * Responsabilidades:
  * - Endpoint search A : consumir API externa.
+ * - Endpoint show B : Obtiene el show por ID consumiendo la API externa.
  */
 @Slf4j
 @Service
@@ -54,6 +58,24 @@ public class ShowService {
                 .collect(Collectors.toList());
     }
 
+    /**
+     * Punto B (Básico): Obtiene el show por ID consumiendo la API externa.
+     * 
+     * @param showId ID del show en TV Maze.
+     * @return Optional con el ShowDetailResponse si existe, vacío si no.
+     */
+public Optional<ShowDetailResponse> getShowById(Integer showId) {
+    log.info("Solicitando detalle del show con ID: {}", showId);
+    
+    TvMazeShow show = tvMazeClient.getShowById(showId).block();
+    
+    if (show == null) {
+        log.warn("Show con ID {} no encontrado", showId);
+        return Optional.empty();
+    }
+    
+    return Optional.of(showMapper.toDetailResponse(show));
+}
     
 }
 

@@ -1,6 +1,7 @@
 package com.kairos.tvmaze.service;
 
 import com.kairos.tvmaze.client.TvMazeClient;
+import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
 import com.kairos.tvmaze.model.domain.TvMazeShow;
@@ -16,6 +17,7 @@ import reactor.core.publisher.Mono;
 
 import java.util.Collections;
 import java.util.List;
+import java.util.Optional;
 
 import static org.junit.jupiter.api.Assertions.*;
 import static org.mockito.Mockito.*;
@@ -134,6 +136,44 @@ class ShowServiceTest {
 
     }
 
+        @Test
+    @DisplayName("B- Endpoint show: Debe retornar el show completo cuando la API lo encuentra")
+    void getShowById_whenFound_shouldReturnDetailResponse() {
+        // Arrange
+        Integer showId = 1;
+        TvMazeShow apiShow = TvMazeShow.builder()
+                .id(showId)
+                .name("Breaking Bad")
+                .language("English")
+                .genres(List.of("Drama"))
+                .build();
+
+        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.just(apiShow));
+
+        // Act
+        Optional<ShowDetailResponse> result = showService.getShowById(showId);
+
+        // Assert
+        assertTrue(result.isPresent());
+        assertEquals("Breaking Bad", result.get().getName());
+        assertEquals("English", result.get().getLanguage());
+        verify(tvMazeClient, times(1)).getShowById(showId);
+    }
+
+    @Test
+    @DisplayName("B- Endpoint show: Debe retornar Optional.empty() cuando la API no encuentra el show")
+    void getShowById_whenNotFound_shouldReturnEmpty() {
+        // Arrange
+        Integer showId = 999;
+        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.empty());
+
+        // Act
+        Optional<ShowDetailResponse> result = showService.getShowById(showId);
+
+        // Assert
+        assertTrue(result.isEmpty());
+        verify(tvMazeClient, times(1)).getShowById(showId);
+    }
    
 }
 

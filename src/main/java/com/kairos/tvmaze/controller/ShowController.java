@@ -1,8 +1,10 @@
 package com.kairos.tvmaze.controller;
 
+import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.service.ShowService;
 import jakarta.validation.constraints.NotBlank;
+import jakarta.validation.constraints.NotNull;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.http.ResponseEntity;
 import org.springframework.validation.annotation.Validated;
@@ -51,6 +53,21 @@ public class ShowController {
         log.info("Respondiendo con {} resultados para query '{}'", results.size(), q);
 
         return ResponseEntity.ok(results);
+    }
+
+
+    /**
+     * Punto B: Endpoint para obtener el objeto show completo por su ID.
+     */
+    @GetMapping("/shows/{showId}")
+    public ResponseEntity<ShowDetailResponse> getShowById(
+            @PathVariable("showId") @NotNull(message = "El showId es obligatorio") Integer showId) {
+        
+        log.info("Petición recibida para obtener show con ID: {}", showId);
+        
+        return showService.getShowById(showId)
+                .map(ResponseEntity::ok)
+                .orElse(ResponseEntity.notFound().build());
     }
 
 }

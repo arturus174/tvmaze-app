@@ -1,5 +1,6 @@
 package com.kairos.tvmaze.service.mapper;
 
+import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.model.domain.TvMazeNetwork;
 import com.kairos.tvmaze.model.domain.TvMazeShow;
@@ -48,6 +49,71 @@ public class ShowMapper {
         }
         if (webChannel != null && webChannel.getName() != null) {
             return webChannel.getName();
+        }
+        return null;
+    }
+
+    /**
+     * Convierte un TvMazeShow (respuesta de la API externa) a un
+     * ShowDetailResponse (DTO para el endpoint de detalle).
+     *
+     * @param show modelo de dominio proveniente de TV Maze.
+     * @return DTO de detalle.
+     */
+    public ShowDetailResponse toDetailResponse(TvMazeShow show) {
+        if (show == null) {
+            return null;
+        }
+
+        return ShowDetailResponse.builder()
+                .id(show.getId())
+                .name(show.getName())
+                .url(show.getUrl())
+                .summary(show.getSummary())
+                .language(show.getLanguage())
+                .genres(show.getGenres())
+                .status(show.getStatus())
+                .runtime(show.getRuntime())
+                .premiered(show.getPremiered())
+                .imageUrl(resolveImageUrl(show))
+                .channelName(resolveChannelName(show.getNetwork(), show.getWebChannel()))
+                .channelCountry(resolveChannelCountry(show.getNetwork(), show.getWebChannel()))
+                .build();
+    }
+
+    /**
+     * Resuelve el país del canal priorizando network sobre webChannel.
+     *
+     * @param network red de televisión tradicional.
+     * @param webChannel canal web/plataforma.
+     * @return nombre del país o null.
+     */
+    private String resolveChannelCountry(TvMazeNetwork network, TvMazeWebChannel webChannel) {
+        if (network != null && network.getCountry() != null) {
+            return network.getCountry().getName();
+        }
+        if (webChannel != null && webChannel.getCountry() != null) {
+            return webChannel.getCountry().getName();
+        }
+        return null;
+    }
+
+    /**
+     * Extrae la URL de la imagen original del show.
+     * Si no hay imagen original, retorna la imagen media.
+     *
+     * @param show modelo de dominio con las imágenes.
+     * @return URL de la imagen o null.
+     */
+    private String resolveImageUrl(TvMazeShow show) {
+        if (show.getImage() == null) {
+            return null;
+        }
+        if (show.getImage().getOriginal() != null) {
+            return show.getImage().getOriginal().getUrl();
+        }
+        if (show.getImage().getMedium() != null) {
+            return show.getImage().getMedium().getUrl();
         }
         return null;
     }

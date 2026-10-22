@@ -39,11 +39,6 @@ public class TvMazeClient {
      * Consume el endpoint de búsqueda de TV Maze: /search/shows?q={query}.
      * Devuelve una lista de resultados con su score de relevancia.
      *
-     * Flujo:
-     * 1. Realiza GET a /search/shows pasando el query como parámetro.
-     * 2. Deserializa la respuesta a una lista de TvMazeSearchResult.
-     * 3. Maneja errores HTTP (4xx, 5xx) y de conexión de forma centralizada.
-     *
      * @param query texto de búsqueda (nombre del show, actor, etc.).
      * @return Mono con la lista de resultados (puede estar vacía si no hay coincidencias).
      */
@@ -77,10 +72,6 @@ public class TvMazeClient {
      * Consume el endpoint de detalle de TV Maze: /shows/{showId}.
      * Devuelve la información completa de un show específico.
      *
-     * Flujo:
-     * 1. Realiza GET a /shows/{showId}.
-     * 2. Deserializa la respuesta a un objeto TvMazeShow.
-     * 3. Si el show no existe (404), devuelve Mono.empty().
      *
      * @param showId ID del show en TV Maze.
      * @return Mono con el show completo, o Mono.empty() si no se encuentra.
@@ -97,7 +88,7 @@ public class TvMazeClient {
                 .doOnError(error -> log.error("Error al obtener show con ID {}: {}",
                         showId, error.getMessage()))
                 .onErrorResume(WebClientResponseException.NotFound.class, error -> {
-                    log.warn("Show con ID {} no encontrado en TV Maze", showId);
+                    log.warn("Show con ID {} no encontrado en TV Maze (404)", showId);
                     return Mono.empty();
                 })
                 .onErrorResume(WebClientResponseException.class, error -> {
