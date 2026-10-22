@@ -5,6 +5,8 @@ import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.model.domain.TvMazeNetwork;
 import com.kairos.tvmaze.model.domain.TvMazeShow;
 import com.kairos.tvmaze.model.domain.TvMazeWebChannel;
+import com.kairos.tvmaze.model.entity.ShowCache;
+
 import org.springframework.stereotype.Component;
 
 import java.time.LocalDateTime;
@@ -118,4 +120,48 @@ public class ShowMapper {
         return null;
     }
 
+    /**
+     * Convierte un TvMazeShow a una entidad ShowCache para persistirla en MongoDB.
+     */
+    public ShowCache toCacheEntity(TvMazeShow show) {
+        if (show == null) return null;
+        return ShowCache.builder()
+                .showId(show.getId())
+                .name(show.getName())
+                .url(show.getUrl())
+                .summary(show.getSummary())
+                .language(show.getLanguage())
+                .genres(show.getGenres())
+                .status(show.getStatus())
+                .runtime(show.getRuntime())
+                .premiered(show.getPremiered())
+                .imageUrl(resolveImageUrl(show))
+                .channelName(resolveChannelName(show.getNetwork(), show.getWebChannel()))
+                .channelCountry(resolveChannelCountry(show.getNetwork(), show.getWebChannel()))
+                .cachedAt(LocalDateTime.now())
+                .build();
+    }
+
+    /**
+     * Convierte una entidad ShowCache (de MongoDB) a un ShowDetailResponse (DTO de salida).
+     */
+    public ShowDetailResponse fromCacheToDetailResponse(ShowCache cache) {
+        if (cache == null) return null;
+        return ShowDetailResponse.builder()
+                .id(cache.getShowId())
+                .name(cache.getName())
+                .url(cache.getUrl())
+                .summary(cache.getSummary())
+                .language(cache.getLanguage())
+                .genres(cache.getGenres())
+                .status(cache.getStatus())
+                .runtime(cache.getRuntime())
+                .premiered(cache.getPremiered())
+                .imageUrl(cache.getImageUrl())
+                .channelName(cache.getChannelName())
+                .channelCountry(cache.getChannelCountry())
+                .build();
+    }
+
 }
+

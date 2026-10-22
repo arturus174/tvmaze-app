@@ -3,6 +3,8 @@ package com.kairos.tvmaze.service;
 import com.kairos.tvmaze.client.TvMazeClient;
 import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
+import com.kairos.tvmaze.model.entity.ShowCache;
+import com.kairos.tvmaze.repository.ShowCacheRepository;
 import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
 import com.kairos.tvmaze.model.domain.TvMazeShow;
 import com.kairos.tvmaze.service.mapper.ShowMapper;
@@ -18,8 +20,11 @@ import reactor.core.publisher.Mono;
 import java.util.Collections;
 import java.util.List;
 import java.util.Optional;
+import java.time.LocalDateTime;
 
 import static org.junit.jupiter.api.Assertions.*;
+import static org.mockito.ArgumentMatchers.any;
+import static org.mockito.ArgumentMatchers.anyInt;
 import static org.mockito.Mockito.*;
 
 /**
@@ -34,6 +39,9 @@ class ShowServiceTest {
     @Mock
     private TvMazeClient tvMazeClient;
 
+    // se agrega para simular prueba del cache
+    @Mock
+    private ShowCacheRepository showCacheRepository;
 
     /**
      * sin dependencias externas.
@@ -49,7 +57,7 @@ class ShowServiceTest {
     void setUp() {
         showMapper = new ShowMapper();
         // Re-inicializar el servicio con el mapper real
-        showService = new ShowService(tvMazeClient, showMapper);
+        showService = new ShowService(tvMazeClient, showMapper, showCacheRepository);
     }
 
     /**
@@ -136,7 +144,7 @@ class ShowServiceTest {
 
     }
 
-        @Test
+    @Test
     @DisplayName("B- Endpoint show: Debe retornar el show completo cuando la API lo encuentra")
     void getShowById_whenFound_shouldReturnDetailResponse() {
         // Arrange
@@ -174,6 +182,61 @@ class ShowServiceTest {
         assertTrue(result.isEmpty());
         verify(tvMazeClient, times(1)).getShowById(showId);
     }
-   
+
+    @Test
+    @DisplayName("B- Endpoint show (Caché): Debe retornar desde MongoDB sin llamar a la API si ya existe")
+    void getShowById_whenExistsInCache_shouldReturnFromCacheWithoutApiCall() {
+        // Arrange
+        Integer showId = 1;
+        ShowCache cachedShow = ShowCache.builder()
+                .showId(showId)
+                .name("Breaking Bad")
+                .language("English")
+                .cachedAt(LocalDateTime.now().minusDays(1))
+                .build();
+
+        when(showCacheRepository.findByShowId(showId)).thenReturn(Optional.of(cachedShow));
+
+        // Act
+        Optional<ShowDetailResponse> result = showService.getShowById(showId);
+
+        // Assert
+        assertTrue(result.isPresent());
+        assertEquals("Breaking Bad", result.get().getName());
+        
+        // Validaciones CRÍTICAS:
+        verify(showCacheRepository, times(1)).findByShowId(showId);
+        verify(tvMazeClient, never()).getShowById(anyInt()); // ¡No debe llamar a la API!
+        verify(showCacheRepository, never()).save(any());    // ¡No debe guardar de nuevo!
+    }
+
+    @Test
+    @DisplayName("B- Endpoint show (Caché): Debe llamar a la API y guardar en Mongo si no existe en caché")
+    void getShowById_whenNotInCache_shouldCallApiAndSaveToMongo() {
+        // Arrange
+        Integer showId = 99;
+        TvMazeShow apiShow = TvMazeShow.builder()
+                .id(showId)
+                .name("New Show")
+                .language("Spanish")
+                .build();
+
+        when(showCacheRepository.findByShowId(showId)).thenReturn(Optional.empty());
+        when(tvMazeClient.getShowById(showId)).thenReturn(Mono.just(apiShow));
+        when(showCacheRepository.save(any(ShowCache.class))).thenAnswer(invocation -> invocation.getArgument(0));
+
+        // Act
+        Optional<ShowDetailResponse> result = showService.getShowById(showId);
+
+        // Assert
+        assertTrue(result.isPresent());
+        assertEquals("New Show", result.get().getName());
+        
+        // Validaciones CRÍTICAS:
+        verify(showCacheRepository, times(1)).findByShowId(showId);
+        verify(tvMazeClient, times(1)).getShowById(showId); // ¡Sí debe llamar a la API!
+        verify(showCacheRepository, times(1)).save(any(ShowCache.class)); // ¡Debe guardar en Mongo!
+    }
+
 }
 

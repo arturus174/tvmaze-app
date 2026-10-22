@@ -5,6 +5,8 @@ import com.kairos.tvmaze.dto.response.ShowDetailResponse;
 import com.kairos.tvmaze.dto.response.ShowSearchResponse;
 import com.kairos.tvmaze.model.domain.TvMazeSearchResult;
 import com.kairos.tvmaze.model.domain.TvMazeShow;
+import com.kairos.tvmaze.model.entity.ShowCache;
+import com.kairos.tvmaze.repository.ShowCacheRepository;
 import com.kairos.tvmaze.service.mapper.ShowMapper;
 import lombok.extern.slf4j.Slf4j;
 import org.springframework.stereotype.Service;
@@ -18,7 +20,8 @@ import java.util.stream.Collectors;
  *
  * Responsabilidades:
  * - Endpoint search A : consumir API externa.
- * - Endpoint show B : Obtiene el show por ID consumiendo la API externa.
+ * - Endpoint show B : Se valida caché en Mongo antes de 
+ *   obtienerlo de la API externa.
  */
 @Slf4j
 @Service
@@ -26,12 +29,15 @@ public class ShowService {
 
     private final TvMazeClient tvMazeClient;
     private final ShowMapper showMapper;
+    private final ShowCacheRepository showCacheRepository;
 
 
     public ShowService(TvMazeClient tvMazeClient,
-                       ShowMapper showMapper) {
+                       ShowMapper showMapper,
+                       ShowCacheRepository showCacheRepository) {
         this.tvMazeClient = tvMazeClient;
         this.showMapper = showMapper;
+        this.showCacheRepository = showCacheRepository;
     }
 
     /**
@@ -59,23 +65,42 @@ public class ShowService {
     }
 
     /**
-     * Punto B (Básico): Obtiene el show por ID consumiendo la API externa.
+     * Punto B (Básico y cache): Obtiene el show por ID consumiendo la API externa.
+     * Si existe, lo retorna. Si no, consume la API, guarda en Mongo y luego retorna.
      * 
      * @param showId ID del show en TV Maze.
      * @return Optional con el ShowDetailResponse si existe, vacío si no.
      */
-public Optional<ShowDetailResponse> getShowById(Integer showId) {
-    log.info("Solicitando detalle del show con ID: {}", showId);
-    
-    TvMazeShow show = tvMazeClient.getShowById(showId).block();
-    
-    if (show == null) {
-        log.warn("Show con ID {} no encontrado", showId);
-        return Optional.empty();
+    public Optional<ShowDetailResponse> getShowById(Integer showId) {
+        log.info("Solicitando detalle del show con ID: {}", showId);
+
+        // 1. Validar si ya existe en el caché de MongoDB
+        Optional<ShowCache> cachedShow = showCacheRepository.findByShowId(showId);
+        
+        if (cachedShow.isPresent()) {
+            log.info("Show ID {} encontrado en caché de MongoDB. Evitando llamada a API externa.", showId);
+            return Optional.of(showMapper.fromCacheToDetailResponse(cachedShow.get()));
+        }
+
+        // 2. Si no existe, consumir la API externa
+        log.info("Show ID {} no está en caché. Consumiendo API de TV Maze...", showId);
+        TvMazeShow show = tvMazeClient.getShowById(showId).block();
+
+        if (show == null) {
+            log.warn("Show ID {} no encontrado en la API de TV Maze.", showId);
+            return Optional.empty();
+        }
+
+        // 3. Guardar el resultado en MongoDB antes de retornar
+        log.info("Guardando show ID {} en caché de MongoDB.", showId);
+        ShowCache cacheEntity = showMapper.toCacheEntity(show);
+        showCacheRepository.save(cacheEntity);
+
+        // 4. Retornar la respuesta mapeada desde el objeto de la API
+        return Optional.of(showMapper.toDetailResponse(show));
     }
-    
-    return Optional.of(showMapper.toDetailResponse(show));
-}
+
+
     
 }
 
