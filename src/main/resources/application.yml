@@ -1,9 +1,9 @@
 spring:
   application:
     name: tvmaze-api
-
-# Cadaena conexion con BD Mongo
-data:
+  
+  # Cadaena conexion con BD Mongo
+  data:
     mongodb:
       uri: mongodb+srv://arturus6_db_user:tlzc9XFEOmLOSuT4@mongo-cluster.o2gzxoj.mongodb.net/vmaze_db?retryWrites=true&w=majority 
 
